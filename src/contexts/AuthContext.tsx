@@ -20,7 +20,8 @@ interface AuthContextType {
   signUp: (
     email: string,
     password: string,
-    fullName: string
+    fullName: string,
+    module: UserModule
   ) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -87,9 +88,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 🔹 cria perfil do módulo se não existir
     if (!profile) {
+      const fullName = data.user.user_metadata?.full_name || 'Usuário';
+
       const { error: insertError } = await supabase.from(tableName).insert({
         id: data.user.id,
         email: data.user.email,
+        full_name: fullName,
       });
 
       if (insertError) throw insertError;
@@ -100,14 +104,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // =========================
-  // SIGN UP (somente auth)
+  // SIGN UP
   // =========================
   const signUp = async (
     email: string,
     password: string,
-    fullName: string
+    fullName: string,
+    selectedModule: UserModule
   ) => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -118,12 +123,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if (error) throw error;
+    if (!data.user) throw new Error('Falha ao criar usuário');
 
-    // ⚠️ NÃO cria registro no banco aqui
-    // Fluxo correto:
-    // 1. Signup
-    // 2. Confirmar email
-    // 3. Login
+    const tableName =
+      selectedModule === 'financeiro'
+        ? 'users_financeiro'
+        : 'users_academico';
+
+    const { error: insertError } = await supabase.from(tableName).insert({
+      id: data.user.id,
+      email: data.user.email,
+      full_name: fullName,
+    });
+
+    if (insertError) throw insertError;
+
+    setModule(selectedModule);
+    localStorage.setItem('userModule', selectedModule);
   };
 
   // =========================
