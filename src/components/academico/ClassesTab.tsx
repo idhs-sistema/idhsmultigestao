@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, GraduationCap, Users, Calendar, CheckSquare, Award, User } from 'lucide-react';
+import { Plus, GraduationCap, Users, Calendar, CheckSquare, Award, User, Search, Eye, Edit2, Save, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -344,6 +344,7 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
   const [students, setStudents] = useState<any[]>([]);
   const [availableStudents, setAvailableStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const { user } = useAuth();
 
   useEffect(() => {
@@ -614,6 +615,17 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                 </button>
               </div>
 
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar aluno por nome ou CPF..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-base"
+                />
+              </div>
+
               <div className="border border-slate-200 rounded-lg overflow-hidden">
                 <div className="max-h-[400px] overflow-y-auto">
                   <table className="w-full min-w-full">
@@ -621,6 +633,9 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                       <tr>
                         <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
                           Aluno
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                          CPF
                         </th>
                         <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
                           Status
@@ -631,10 +646,22 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
-                      {students.map((student) => (
+                      {students
+                        .filter((student) => {
+                          if (!searchTerm) return true;
+                          const search = searchTerm.toLowerCase();
+                          return (
+                            student.students.full_name.toLowerCase().includes(search) ||
+                            student.students.cpf?.toLowerCase().includes(search)
+                          );
+                        })
+                        .map((student) => (
                         <tr key={student.id} className="hover:bg-slate-50">
                           <td className="px-6 py-4 text-sm text-slate-800">
                             <div className="font-medium">{student.students.full_name}</div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-600">
+                            {student.students.cpf || '-'}
                           </td>
                           <td className="px-6 py-4">
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
@@ -642,7 +669,7 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                             </span>
                           </td>
                           <td className="px-6 py-4 text-sm">
-                            <button 
+                            <button
                               onClick={() => handleRemoveStudent(student.student_id)}
                               className="text-red-600 hover:text-red-800 font-medium px-3 py-1 hover:bg-red-50 rounded"
                             >
@@ -653,10 +680,27 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                       ))}
                       {students.length === 0 && (
                         <tr>
-                          <td colSpan={3} className="px-6 py-12 text-center text-slate-500">
+                          <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
                             <div className="flex flex-col items-center">
                               <User className="w-12 h-12 text-slate-300 mb-3" />
                               <p className="text-lg">Nenhum aluno matriculado nesta turma</p>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {students.length > 0 && students.filter((student) => {
+                        if (!searchTerm) return true;
+                        const search = searchTerm.toLowerCase();
+                        return (
+                          student.students.full_name.toLowerCase().includes(search) ||
+                          student.students.cpf?.toLowerCase().includes(search)
+                        );
+                      }).length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center">
+                              <Search className="w-12 h-12 text-slate-300 mb-3" />
+                              <p className="text-lg">Nenhum aluno encontrado com esse termo</p>
                             </div>
                           </td>
                         </tr>
@@ -720,6 +764,9 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                           {classData.modality === 'EAD' ? 'Status de Acesso' : 'Frequência'}
                         </th>
                         <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                          Detalhes
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
                           Certificado
                         </th>
                       </tr>
@@ -758,9 +805,6 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                                   >
                                     {student.attendancePercentage.toFixed(1)}%
                                   </span>
-                                  <span className="text-slate-500 text-sm">
-                                    ({student.attendanceCount}/{classData.total_classes})
-                                  </span>
                                 </div>
                               ) : (
                                 <span
@@ -770,8 +814,33 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                                       : 'bg-red-100 text-red-800'
                                   }`}
                                 >
-                                  {student.isPresent ? '✓ Acessou' : '✗ Não acessou'}
+                                  {student.isPresent ? 'Acessou' : 'Não acessou'}
                                 </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-slate-600">
+                              {classData.modality === 'VIDEOCONFERENCIA' ? (
+                                <div className="flex flex-col">
+                                  <span className="font-medium">
+                                    {student.attendanceCount} de {classData.total_classes} aulas
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    Presenças registradas
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col">
+                                  <span className="font-medium">
+                                    {[
+                                      student.accessData?.access_date_1,
+                                      student.accessData?.access_date_2,
+                                      student.accessData?.access_date_3,
+                                    ].filter(Boolean).length} de 3 acessos
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    Acessos registrados
+                                  </span>
+                                </div>
                               )}
                             </td>
                             <td className="px-6 py-4">
@@ -788,10 +857,10 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                                   className="inline-flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
                                 >
                                   <Award className="w-5 h-5" />
-                                  <span>Emitir Certificado</span>
+                                  <span>Emitir</span>
                                 </button>
                               ) : (
-                                <span className="text-slate-400 font-medium">
+                                <span className="text-slate-400 font-medium text-sm">
                                   Não elegível
                                 </span>
                               )}
@@ -827,6 +896,8 @@ function VideoconferenciaAttendance({ classData, students, onUpdate }: any) {
   const [classNumber, setClassNumber] = useState(1);
   const [classDate, setClassDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
+  const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
   const handleSaveAttendance = async () => {
     if (!confirm('Salvar frequência para esta aula?')) return;
@@ -849,7 +920,13 @@ function VideoconferenciaAttendance({ classData, students, onUpdate }: any) {
     }
 
     alert('Frequência registrada com sucesso!');
+    setAttendance({});
     onUpdate();
+  };
+
+  const handleViewDetails = (student: any) => {
+    setSelectedStudent(student);
+    setShowDetailsModal(true);
   };
 
   return (
@@ -903,6 +980,9 @@ function VideoconferenciaAttendance({ classData, students, onUpdate }: any) {
                 <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700 uppercase tracking-wider">
                   Status
                 </th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                  Ações
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -930,13 +1010,273 @@ function VideoconferenciaAttendance({ classData, students, onUpdate }: any) {
                       {attendance[student.student_id] ? 'Presente' : 'Ausente'}
                     </span>
                   </td>
+                  <td className="px-6 py-4 text-center">
+                    <button
+                      onClick={() => handleViewDetails(student)}
+                      className="inline-flex items-center space-x-1 px-3 py-1 text-green-600 hover:bg-green-50 rounded-lg transition-colors font-medium"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span>Ver Detalhes</span>
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {showDetailsModal && selectedStudent && (
+        <AttendanceDetailsModal
+          classData={classData}
+          student={selectedStudent}
+          onClose={() => {
+            setShowDetailsModal(false);
+            setSelectedStudent(null);
+            onUpdate();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+interface AttendanceDetailsModalProps {
+  classData: Class;
+  student: any;
+  onClose: () => void;
+}
+
+function AttendanceDetailsModal({ classData, student, onClose }: AttendanceDetailsModalProps) {
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [editingRecord, setEditingRecord] = useState<string | null>(null);
+  const [editData, setEditData] = useState<{ classNumber: number; classDate: string; present: boolean } | null>(null);
+
+  useEffect(() => {
+    loadAttendanceRecords();
+  }, []);
+
+  const loadAttendanceRecords = async () => {
+    const { data, error } = await supabase
+      .from('attendance')
+      .select('*')
+      .eq('class_id', classData.id)
+      .eq('student_id', student.student_id)
+      .order('class_number', { ascending: true });
+
+    if (error) {
+      console.error('Error loading attendance records:', error);
+      return;
+    }
+
+    setAttendanceRecords(data || []);
+  };
+
+  const handleEdit = (record: any) => {
+    setEditingRecord(record.id);
+    setEditData({
+      classNumber: record.class_number,
+      classDate: record.class_date,
+      present: record.present,
+    });
+  };
+
+  const handleSaveEdit = async (recordId: string) => {
+    if (!editData) return;
+
+    const { error } = await supabase
+      .from('attendance')
+      .update({
+        class_number: editData.classNumber,
+        class_date: editData.classDate,
+        present: editData.present,
+      })
+      .eq('id', recordId);
+
+    if (error) {
+      console.error('Error updating attendance:', error);
+      alert('Erro ao atualizar frequência');
+      return;
+    }
+
+    setEditingRecord(null);
+    setEditData(null);
+    loadAttendanceRecords();
+    alert('Frequência atualizada com sucesso!');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRecord(null);
+    setEditData(null);
+  };
+
+  const handleDelete = async (recordId: string) => {
+    if (!confirm('Tem certeza que deseja excluir este registro de frequência?')) return;
+
+    const { error } = await supabase
+      .from('attendance')
+      .delete()
+      .eq('id', recordId);
+
+    if (error) {
+      console.error('Error deleting attendance:', error);
+      alert('Erro ao excluir frequência');
+      return;
+    }
+
+    loadAttendanceRecords();
+    alert('Frequência excluída com sucesso!');
+  };
+
+  const presentCount = attendanceRecords.filter(r => r.present).length;
+  const percentage = (presentCount / classData.total_classes) * 100;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[85vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <h3 className="text-2xl font-bold text-slate-800">Detalhes de Frequência</h3>
+              <p className="text-lg text-slate-600 mt-1">{student.students.full_name}</p>
+              <div className="flex items-center space-x-4 mt-3">
+                <span className="text-sm text-slate-600">
+                  Presenças: <span className="font-bold text-green-600">{presentCount}</span> / {classData.total_classes}
+                </span>
+                <span className={`text-sm font-bold ${percentage >= 60 ? 'text-green-600' : 'text-red-600'}`}>
+                  {percentage.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-600 text-3xl p-1"
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Aula</th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Data</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">Status</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-slate-700">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {attendanceRecords.map((record) => (
+                  <tr key={record.id} className="hover:bg-slate-50">
+                    {editingRecord === record.id ? (
+                      <>
+                        <td className="px-4 py-3">
+                          <input
+                            type="number"
+                            min="1"
+                            max={classData.total_classes}
+                            value={editData?.classNumber || 1}
+                            onChange={(e) => setEditData({ ...editData!, classNumber: parseInt(e.target.value) })}
+                            className="w-20 px-2 py-1 border border-slate-300 rounded focus:ring-2 focus:ring-green-500 text-sm"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <input
+                            type="date"
+                            value={editData?.classDate || ''}
+                            onChange={(e) => setEditData({ ...editData!, classDate: e.target.value })}
+                            className="px-2 py-1 border border-slate-300 rounded focus:ring-2 focus:ring-green-500 text-sm"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <select
+                            value={editData?.present ? 'true' : 'false'}
+                            onChange={(e) => setEditData({ ...editData!, present: e.target.value === 'true' })}
+                            className="px-2 py-1 border border-slate-300 rounded focus:ring-2 focus:ring-green-500 text-sm"
+                          >
+                            <option value="true">Presente</option>
+                            <option value="false">Ausente</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center space-x-2">
+                            <button
+                              onClick={() => handleSaveEdit(record.id)}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded"
+                              title="Salvar"
+                            >
+                              <Save className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={handleCancelEdit}
+                              className="p-1 text-slate-600 hover:bg-slate-50 rounded"
+                              title="Cancelar"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-4 py-3 text-sm text-slate-800">Aula {record.class_number}</td>
+                        <td className="px-4 py-3 text-sm text-slate-800">
+                          {new Date(record.class_date + 'T00:00:00').toLocaleDateString('pt-BR')}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            record.present
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {record.present ? 'Presente' : 'Ausente'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center space-x-2">
+                            <button
+                              onClick={() => handleEdit(record)}
+                              className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                              title="Editar"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(record.id)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded"
+                              title="Excluir"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+                {attendanceRecords.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-12 text-center text-slate-500">
+                      <p>Nenhuma frequência lançada ainda</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={onClose}
+              className="px-6 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
