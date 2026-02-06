@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, GraduationCap, Users, Calendar, CheckSquare, Award } from 'lucide-react';
+import { Plus, GraduationCap, Users, Calendar, CheckSquare, Award, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -461,7 +461,28 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
     loadAvailableStudents();
   };
 
+  const handleRemoveStudent = async (studentId: string) => {
+    if (!confirm('Tem certeza que deseja remover este aluno da turma?')) return;
+
+    const { error } = await supabase
+      .from('class_students')
+      .delete()
+      .eq('class_id', classData.id)
+      .eq('student_id', studentId);
+
+    if (error) {
+      console.error('Error removing student:', error);
+      alert('Erro ao remover aluno');
+      return;
+    }
+
+    loadClassStudents();
+    loadAvailableStudents();
+  };
+
   const handleCloseClass = async () => {
+    if (!confirm('Tem certeza que deseja encerrar esta turma? Esta ação não pode ser desfeita.')) return;
+
     const { error } = await supabase
       .from('classes')
       .update({ status: 'closed' })
@@ -494,76 +515,90 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
     }
 
     alert('Certificado emitido com sucesso!');
+    loadClassStudents();
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[90vh] flex flex-col">
-        {/* Cabeçalho fixo */}
-        <div className="px-6 py-4 border-b border-slate-200 flex-shrink-0">
-          <div className="flex justify-between items-start">
-            <div>
-              <h3 className="text-xl font-bold text-slate-800">{classData.name}</h3>
-              <p className="text-slate-600">{classData.courses?.name}</p>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      {/* MODAL PRINCIPAL - AUMENTADO */}
+      <div className="bg-white rounded-xl shadow-xl w-[95vw] max-w-[1400px] p-6 my-8 max-h-[85vh] overflow-y-auto">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h3 className="text-2xl font-bold text-slate-800">{classData.name}</h3>
+            <p className="text-slate-600 text-lg">{classData.courses?.name}</p>
+            <div className="flex items-center gap-3 mt-2">
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                classData.status === 'active'
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-slate-100 text-slate-600'
+              }`}>
+                {classData.status === 'active' ? 'Ativa' : 'Encerrada'}
+              </span>
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                classData.modality === 'EAD'
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'bg-amber-100 text-amber-700'
+              }`}>
+                {classData.modality === 'EAD' ? 'EAD 24h' : 'Videoconferência'}
+              </span>
             </div>
-            <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-slate-600 text-2xl"
-            >
-              ×
-            </button>
           </div>
-
-          {/* Navegação de abas */}
-          <div className="border-b border-slate-200 mt-4">
-            <nav className="flex space-x-1">
-              <button
-                onClick={() => setTab('students')}
-                className={`px-4 py-2 font-medium transition-colors ${
-                  tab === 'students'
-                    ? 'border-b-2 border-green-600 text-green-600'
-                    : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                Alunos
-              </button>
-              <button
-                onClick={() => setTab('attendance')}
-                className={`px-4 py-2 font-medium transition-colors ${
-                  tab === 'attendance'
-                    ? 'border-b-2 border-green-600 text-green-600'
-                    : 'text-slate-600 hover:text-slate-800'
-                }`}
-              >
-                {classData.modality === 'EAD' ? 'Acessos' : 'Frequência'}
-              </button>
-              {classData.status === 'active' && (
-                <button
-                  onClick={() => setTab('close')}
-                  className={`px-4 py-2 font-medium transition-colors ${
-                    tab === 'close'
-                      ? 'border-b-2 border-green-600 text-green-600'
-                      : 'text-slate-600 hover:text-slate-800'
-                  }`}
-                >
-                  Encerrar Ciclo
-                </button>
-              )}
-            </nav>
-          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 text-3xl p-1"
+          >
+            ×
+          </button>
         </div>
 
-        {/* Conteúdo com scroll */}
-        <div className="px-6 py-4 flex-1 overflow-y-auto">
+        <div className="border-b border-slate-200 mb-6">
+          <nav className="flex space-x-2">
+            <button
+              onClick={() => setTab('students')}
+              className={`px-6 py-3 font-medium text-sm transition-colors ${
+                tab === 'students'
+                  ? 'border-b-2 border-green-600 text-green-600'
+                  : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              Alunos
+            </button>
+            <button
+              onClick={() => setTab('attendance')}
+              className={`px-6 py-3 font-medium text-sm transition-colors ${
+                tab === 'attendance'
+                  ? 'border-b-2 border-green-600 text-green-600'
+                  : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              {classData.modality === 'EAD' ? 'Acessos' : 'Frequência'}
+            </button>
+            {classData.status === 'active' && (
+              <button
+                onClick={() => setTab('close')}
+                className={`px-6 py-3 font-medium text-sm transition-colors ${
+                  tab === 'close'
+                    ? 'border-b-2 border-green-600 text-green-600'
+                    : 'text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                Encerrar Ciclo
+              </button>
+            )}
+          </nav>
+        </div>
+
+        {/* CONTEÚDO DAS ABAS COM MAIOR ALTURA */}
+        <div className="min-h-[500px]">
           {tab === 'students' && (
-            <div className="space-y-4">
-              <div className="flex gap-3">
+            <div className="space-y-6">
+              <div className="flex gap-4">
                 <select
                   value={selectedStudent}
                   onChange={(e) => setSelectedStudent(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  className="flex-1 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-base"
                 >
-                  <option value="">Selecione um aluno</option>
+                  <option value="">Selecione um aluno para matricular</option>
                   {availableStudents.map((student) => (
                     <option key={student.id} value={student.id}>
                       {student.full_name}
@@ -573,157 +608,213 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                 <button
                   onClick={handleEnrollStudent}
                   disabled={!selectedStudent}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                 >
-                  Matricular
+                  Matricular Aluno
                 </button>
               </div>
 
               <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase">
-                        Aluno
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {students.map((student) => (
-                      <tr key={student.id}>
-                        <td className="px-4 py-3 text-sm text-slate-800">
-                          {student.students.full_name}
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                            Matriculado
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                    {students.length === 0 && (
+                <div className="max-h-[400px] overflow-y-auto">
+                  <table className="w-full min-w-full">
+                    <thead className="bg-slate-50 sticky top-0">
                       <tr>
-                        <td colSpan={2} className="px-4 py-8 text-center text-slate-500">
-                          Nenhum aluno matriculado
-                        </td>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                          Aluno
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                          Ações
+                        </th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {students.map((student) => (
+                        <tr key={student.id} className="hover:bg-slate-50">
+                          <td className="px-6 py-4 text-sm text-slate-800">
+                            <div className="font-medium">{student.students.full_name}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                              Matriculado
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <button 
+                              onClick={() => handleRemoveStudent(student.student_id)}
+                              className="text-red-600 hover:text-red-800 font-medium px-3 py-1 hover:bg-red-50 rounded"
+                            >
+                              Remover
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {students.length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-12 text-center text-slate-500">
+                            <div className="flex flex-col items-center">
+                              <User className="w-12 h-12 text-slate-300 mb-3" />
+                              <p className="text-lg">Nenhum aluno matriculado nesta turma</p>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
 
           {tab === 'attendance' && classData.modality === 'VIDEOCONFERENCIA' && (
-            <VideoconferenciaAttendance
-              classData={classData}
-              students={students}
-              onUpdate={loadClassStudents}
-            />
+            <div className="space-y-6 min-h-[500px]">
+              <VideoconferenciaAttendance
+                classData={classData}
+                students={students}
+                onUpdate={loadClassStudents}
+              />
+            </div>
           )}
 
           {tab === 'attendance' && classData.modality === 'EAD' && (
-            <EADAccessManagement
-              classData={classData}
-              students={students}
-              onUpdate={loadClassStudents}
-            />
+            <div className="min-h-[500px]">
+              <EADAccessManagement
+                classData={classData}
+                students={students}
+                onUpdate={loadClassStudents}
+              />
+            </div>
           )}
 
           {tab === 'close' && (
-            <div className="space-y-4">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <h4 className="font-semibold text-amber-800 mb-2">Resumo do Ciclo</h4>
-                <p className="text-sm text-amber-700">
-                  Total de alunos: {students.length}
-                </p>
+            <div className="space-y-6">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
+                <h4 className="font-bold text-lg text-amber-800 mb-3">Resumo do Ciclo</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm text-amber-700">Total de alunos</p>
+                    <p className="text-2xl font-bold text-amber-800">{students.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-amber-700">Aulas previstas</p>
+                    <p className="text-2xl font-bold text-amber-800">{classData.total_classes}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-amber-700">Status</p>
+                    <p className="text-2xl font-bold text-amber-800">Ativo</p>
+                  </div>
+                </div>
               </div>
 
               <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <table className="w-full">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase">
-                        Aluno
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase">
-                        {classData.modality === 'EAD' ? 'Status' : 'Frequência'}
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-slate-600 uppercase">
-                        Ação
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {students.map((student) => {
-                      const canCertify =
-                        classData.modality === 'VIDEOCONFERENCIA'
-                          ? student.attendancePercentage >= 60
-                          : student.isPresent;
+                <div className="max-h-[400px] overflow-y-auto">
+                  <table className="w-full min-w-full">
+                    <thead className="bg-slate-50 sticky top-0">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                          Aluno
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                          {classData.modality === 'EAD' ? 'Status de Acesso' : 'Frequência'}
+                        </th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                          Certificado
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {students.map((student) => {
+                        const canCertify =
+                          classData.modality === 'VIDEOCONFERENCIA'
+                            ? student.attendancePercentage >= 60
+                            : student.isPresent;
 
-                      return (
-                        <tr key={student.id}>
-                          <td className="px-4 py-3 text-sm text-slate-800">
-                            {student.students.full_name}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            {classData.modality === 'VIDEOCONFERENCIA' ? (
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  student.attendancePercentage >= 60
-                                    ? 'bg-green-100 text-green-700'
-                                    : 'bg-red-100 text-red-700'
-                                }`}
-                              >
-                                {student.attendancePercentage.toFixed(1)}% ({student.attendanceCount}/
-                                {classData.total_classes})
-                              </span>
-                            ) : (
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  student.isPresent
-                                    ? 'bg-green-100 text-green-700'
-                                    : 'bg-red-100 text-red-700'
-                                }`}
-                              >
-                                {student.isPresent ? 'Frequente' : 'Ausente'}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {canCertify && (
-                              <button
-                                onClick={() =>
-                                  handleIssueCertificate(
-                                    student.student_id,
-                                    classData.modality === 'VIDEOCONFERENCIA'
-                                      ? student.attendancePercentage
-                                      : 100
-                                  )
-                                }
-                                className="flex items-center space-x-1 text-green-600 hover:text-green-700 text-sm font-medium"
-                              >
-                                <Award className="w-4 h-4" />
-                                <span>Emitir Certificado</span>
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                        return (
+                          <tr key={student.id} className="hover:bg-slate-50">
+                            <td className="px-6 py-4 text-sm text-slate-800">
+                              <div className="font-medium">{student.students.full_name}</div>
+                            </td>
+                            <td className="px-6 py-4">
+                              {classData.modality === 'VIDEOCONFERENCIA' ? (
+                                <div className="flex items-center space-x-3">
+                                  <div className="w-32 bg-slate-200 rounded-full h-2.5">
+                                    <div
+                                      className={`h-2.5 rounded-full ${
+                                        student.attendancePercentage >= 60
+                                          ? 'bg-green-500'
+                                          : 'bg-red-500'
+                                      }`}
+                                      style={{ width: `${Math.min(student.attendancePercentage, 100)}%` }}
+                                    ></div>
+                                  </div>
+                                  <span
+                                    className={`font-semibold ${
+                                      student.attendancePercentage >= 60
+                                        ? 'text-green-700'
+                                        : 'text-red-700'
+                                    }`}
+                                  >
+                                    {student.attendancePercentage.toFixed(1)}%
+                                  </span>
+                                  <span className="text-slate-500 text-sm">
+                                    ({student.attendanceCount}/{classData.total_classes})
+                                  </span>
+                                </div>
+                              ) : (
+                                <span
+                                  className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                                    student.isPresent
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-red-100 text-red-800'
+                                  }`}
+                                >
+                                  {student.isPresent ? '✓ Acessou' : '✗ Não acessou'}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              {canCertify ? (
+                                <button
+                                  onClick={() =>
+                                    handleIssueCertificate(
+                                      student.student_id,
+                                      classData.modality === 'VIDEOCONFERENCIA'
+                                        ? student.attendancePercentage
+                                        : 100
+                                    )
+                                  }
+                                  className="inline-flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                                >
+                                  <Award className="w-5 h-5" />
+                                  <span>Emitir Certificado</span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-400 font-medium">
+                                  Não elegível
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
-              <button
-                onClick={handleCloseClass}
-                className="w-full px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
-              >
-                Encerrar Turma
-              </button>
+              <div className="pt-6 border-t border-slate-200">
+                <button
+                  onClick={handleCloseClass}
+                  className="w-full px-6 py-4 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-bold text-lg shadow-md"
+                >
+                  Encerrar Turma e Finalizar Ciclo
+                </button>
+                <p className="text-sm text-slate-500 text-center mt-3">
+                  Ao encerrar a turma, não será possível adicionar novas aulas ou alunos
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -738,6 +829,8 @@ function VideoconferenciaAttendance({ classData, students, onUpdate }: any) {
   const [attendance, setAttendance] = useState<Record<string, boolean>>({});
 
   const handleSaveAttendance = async () => {
+    if (!confirm('Salvar frequência para esta aula?')) return;
+
     for (const student of students) {
       const present = attendance[student.student_id] || false;
 
@@ -755,70 +848,95 @@ function VideoconferenciaAttendance({ classData, students, onUpdate }: any) {
       );
     }
 
-    alert('Frequência registrada!');
+    alert('Frequência registrada com sucesso!');
     onUpdate();
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
+    <>
+      <div className="grid grid-cols-3 gap-6 mb-6">
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Número da Aula</label>
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            Número da Aula
+          </label>
           <input
             type="number"
             min="1"
             max={classData.total_classes}
             value={classNumber}
             onChange={(e) => setClassNumber(parseInt(e.target.value))}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-base"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">Data da Aula</label>
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            Data da Aula
+          </label>
           <input
             type="date"
             value={classDate}
             onChange={(e) => setClassDate(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-base"
           />
+        </div>
+        <div className="flex items-end">
+          <button
+            onClick={handleSaveAttendance}
+            className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+          >
+            Salvar Frequência
+          </button>
         </div>
       </div>
 
       <div className="border border-slate-200 rounded-lg overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Aluno</th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-slate-600 uppercase">Presente</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {students.map((student: any) => (
-              <tr key={student.id}>
-                <td className="px-6 py-4 text-sm text-slate-800">{student.students.full_name}</td>
-                <td className="px-6 py-4 text-center">
-                  <input
-                    type="checkbox"
-                    checked={attendance[student.student_id] || false}
-                    onChange={(e) =>
-                      setAttendance({ ...attendance, [student.student_id]: e.target.checked })
-                    }
-                    className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
-                  />
-                </td>
+        <div className="max-h-[400px] overflow-y-auto">
+          <table className="w-full min-w-full">
+            <thead className="bg-slate-50 sticky top-0">
+              <tr>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                  Aluno
+                </th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                  Presente
+                </th>
+                <th className="px-6 py-4 text-center text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                  Status
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {students.map((student: any) => (
+                <tr key={student.id} className="hover:bg-slate-50">
+                  <td className="px-6 py-4 text-sm text-slate-800">
+                    {student.students.full_name}
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <input
+                      type="checkbox"
+                      checked={attendance[student.student_id] || false}
+                      onChange={(e) =>
+                        setAttendance({ ...attendance, [student.student_id]: e.target.checked })
+                      }
+                      className="w-6 h-6 text-green-600 rounded focus:ring-green-500 cursor-pointer"
+                    />
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                      attendance[student.student_id]
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-slate-100 text-slate-800'
+                    }`}>
+                      {attendance[student.student_id] ? 'Presente' : 'Ausente'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-
-      <button
-        onClick={handleSaveAttendance}
-        className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-      >
-        Salvar Frequência
-      </button>
-    </div>
+    </>
   );
 }
 
@@ -861,6 +979,8 @@ function EADAccessManagement({ classData, students, onUpdate }: any) {
   };
 
   const handleSaveAll = async () => {
+    if (!confirm('Salvar todos os acessos?')) return;
+    
     for (const student of students) {
       const data = accessData[student.student_id];
       
@@ -900,69 +1020,74 @@ function EADAccessManagement({ classData, students, onUpdate }: any) {
       </div>
 
       <div className="border border-slate-200 rounded-lg overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">
-                Aluno
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">
-                Acesso 1
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">
-                Acesso 2
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">
-                Acesso 3
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">
-                Ação
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {students.map((student: any) => (
-              <tr key={student.id}>
-                <td className="px-6 py-4 text-sm text-slate-800">
-                  {student.students.full_name}
-                </td>
-                {[1, 2, 3].map((num) => (
-                  <td key={num} className="px-6 py-4">
-                    <input
-                      type="date"
-                      value={accessData[student.student_id]?.[`access_date_${num}`] || ''}
-                      onChange={(e) =>
-                        setAccessData({
-                          ...accessData,
-                          [student.student_id]: {
-                            ...accessData[student.student_id],
-                            [`access_date_${num}`]: e.target.value,
-                          },
-                        })
-                      }
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
-                    />
-                  </td>
-                ))}
-                <td className="px-6 py-4">
-                  <button
-                    onClick={() => handleSaveAccess(student.student_id)}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
-                  >
-                    Salvar
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {students.length === 0 && (
+        <div className="max-h-[500px] overflow-y-auto">
+          <table className="w-full min-w-full">
+            <thead className="bg-slate-50 sticky top-0">
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
-                  Nenhum aluno matriculado
-                </td>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                  Aluno
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                  Acesso 1
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                  Acesso 2
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                  Acesso 3
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
+                  Ações
+                </th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {students.map((student: any) => (
+                <tr key={student.id} className="hover:bg-slate-50">
+                  <td className="px-6 py-4 text-sm text-slate-800">
+                    {student.students.full_name}
+                  </td>
+                  {[1, 2, 3].map((num) => (
+                    <td key={num} className="px-6 py-4">
+                      <input
+                        type="date"
+                        value={accessData[student.student_id]?.[`access_date_${num}`] || ''}
+                        onChange={(e) =>
+                          setAccessData({
+                            ...accessData,
+                            [student.student_id]: {
+                              ...accessData[student.student_id],
+                              [`access_date_${num}`]: e.target.value,
+                            },
+                          })
+                        }
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                      />
+                    </td>
+                  ))}
+                  <td className="px-6 py-4">
+                    <button
+                      onClick={() => handleSaveAccess(student.student_id)}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                    >
+                      Salvar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {students.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center">
+                      <User className="w-12 h-12 text-slate-300 mb-3" />
+                      <p className="text-lg">Nenhum aluno matriculado</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
