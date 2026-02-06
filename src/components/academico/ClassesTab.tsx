@@ -565,22 +565,48 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
 
   const handleCloseCertificate = async () => {
     if (certificateData) {
-      const { error } = await supabase.from('certificates').insert([
-        {
-          class_id: classData.id,
-          student_id: certificateData.studentId,
-          issue_date: new Date().toISOString().split('T')[0],
-          attendance_percentage: certificateData.percentage,
-        },
-      ]);
+      const { data: existingCert } = await supabase
+        .from('certificates')
+        .select('id')
+        .eq('class_id', classData.id)
+        .eq('student_id', certificateData.studentId)
+        .maybeSingle();
 
-      if (error) {
-        console.error('Error issuing certificate:', error);
-        alert('Erro ao emitir certificado');
-        return;
+      if (existingCert) {
+        const { error } = await supabase
+          .from('certificates')
+          .update({
+            issue_date: new Date().toISOString().split('T')[0],
+            attendance_percentage: certificateData.percentage,
+          })
+          .eq('id', existingCert.id);
+
+        if (error) {
+          console.error('Error updating certificate:', error);
+          alert('Erro ao atualizar certificado');
+          return;
+        }
+
+        alert('Certificado atualizado com sucesso!');
+      } else {
+        const { error } = await supabase.from('certificates').insert([
+          {
+            class_id: classData.id,
+            student_id: certificateData.studentId,
+            issue_date: new Date().toISOString().split('T')[0],
+            attendance_percentage: certificateData.percentage,
+          },
+        ]);
+
+        if (error) {
+          console.error('Error issuing certificate:', error);
+          alert('Erro ao emitir certificado');
+          return;
+        }
+
+        alert('Certificado emitido com sucesso!');
       }
 
-      alert('Certificado emitido com sucesso!');
       loadClassStudents();
     }
 
