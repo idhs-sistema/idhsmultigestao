@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, GraduationCap, Users, Calendar, CheckSquare, Award, User, Search, Eye, Edit2, Save, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { CertificateModal } from './CertificateModal';
 
 interface Course {
   id: string;
@@ -345,6 +346,8 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
   const [availableStudents, setAvailableStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showCertificate, setShowCertificate] = useState(false);
+  const [certificateData, setCertificateData] = useState<any>(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -500,23 +503,89 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
   };
 
   const handleIssueCertificate = async (studentId: string, percentage: number) => {
-    const { error } = await supabase.from('certificates').insert([
-      {
-        class_id: classData.id,
-        student_id: studentId,
-        issue_date: new Date().toISOString().split('T')[0],
-        attendance_percentage: percentage,
-      },
-    ]);
+    const { data: studentData, error: studentError } = await supabase
+      .from('students')
+      .select('full_name')
+      .eq('id', studentId)
+      .single();
 
-    if (error) {
-      console.error('Error issuing certificate:', error);
-      alert('Erro ao emitir certificado');
+    if (studentError || !studentData) {
+      console.error('Error loading student:', studentError);
+      alert('Erro ao carregar dados do aluno');
       return;
     }
 
-    alert('Certificado emitido com sucesso!');
-    loadClassStudents();
+    const { data: courseData, error: courseError } = await supabase
+      .from('courses')
+      .select('name, workload')
+      .eq('id', classData.course_id)
+      .single();
+
+    if (courseError || !courseData) {
+      console.error('Error loading course:', courseError);
+      alert('Erro ao carregar dados do curso');
+      return;
+    }
+
+    const { data: modulesData } = await supabase
+      .from('course_modules')
+      .select('name')
+      .eq('course_id', classData.course_id)
+      .order('order_number');
+
+    const modules = modulesData?.map(m => m.name) || [];
+
+    const { data: attendanceData } = await supabase
+      .from('attendance')
+      .select('class_date')
+      .eq('class_id', classData.id)
+      .eq('student_id', studentId)
+      .order('class_date', { ascending: true });
+
+    const startDate = attendanceData && attendanceData.length > 0
+      ? attendanceData[0].class_date
+      : new Date().toISOString().split('T')[0];
+
+    const endDate = attendanceData && attendanceData.length > 0
+      ? attendanceData[attendanceData.length - 1].class_date
+      : new Date().toISOString().split('T')[0];
+
+    setCertificateData({
+      studentName: studentData.full_name,
+      courseName: courseData.name,
+      courseModules: modules,
+      workload: courseData.workload,
+      startDate,
+      endDate,
+      studentId,
+      percentage,
+    });
+    setShowCertificate(true);
+  };
+
+  const handleCloseCertificate = async () => {
+    if (certificateData) {
+      const { error } = await supabase.from('certificates').insert([
+        {
+          class_id: classData.id,
+          student_id: certificateData.studentId,
+          issue_date: new Date().toISOString().split('T')[0],
+          attendance_percentage: certificateData.percentage,
+        },
+      ]);
+
+      if (error) {
+        console.error('Error issuing certificate:', error);
+        alert('Erro ao emitir certificado');
+        return;
+      }
+
+      alert('Certificado emitido com sucesso!');
+      loadClassStudents();
+    }
+
+    setShowCertificate(false);
+    setCertificateData(null);
   };
 
   return (
@@ -888,6 +957,18 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
           )}
         </div>
       </div>
+
+      {showCertificate && certificateData && (
+        <CertificateModal
+          studentName={certificateData.studentName}
+          courseName={certificateData.courseName}
+          courseModules={certificateData.courseModules}
+          workload={certificateData.workload}
+          startDate={certificateData.startDate}
+          endDate={certificateData.endDate}
+          onClose={handleCloseCertificate}
+        />
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { FluxoCaixaTab } from './FluxoCaixaTab';
 import { ControlePagamentoTab } from './ControlePagamentoTab';
 import { ControleInstitucionalTab } from './ControleInstitucionalTab';
+import logoImg from '../../assets/image.png';
 
 type Tab = 'fluxo' | 'pagamento' | 'institucional';
 
@@ -24,7 +25,10 @@ export function FinanceiroDashboard() {
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-slate-800">Módulo Financeiro</h1>
+            <div className="flex items-center space-x-4">
+              <img src={logoImg} alt="IDHS" className="h-12" />
+              <h1 className="text-2xl font-bold text-slate-800">Módulo Financeiro</h1>
+            </div>
             <button
               onClick={handleSignOut}
               className="flex items-center space-x-2 px-4 py-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"

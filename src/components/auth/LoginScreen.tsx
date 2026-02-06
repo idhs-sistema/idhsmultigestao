@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Building2, GraduationCap, LogIn, UserPlus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { UserModule } from '../../lib/supabase';
+import logoImg from '../../assets/image.png';
 
 export function LoginScreen() {
   const [selectedModule, setSelectedModule] = useState<UserModule | null>(null);
@@ -39,6 +40,7 @@ export function LoginScreen() {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
         <div className="max-w-4xl w-full">
           <div className="text-center mb-12">
+            <img src={logoImg} alt="IDHS" className="h-24 mx-auto mb-6" />
             <h1 className="text-4xl font-bold text-slate-800 mb-3">Sistema IDHS</h1>
             <p className="text-slate-600 text-lg">Selecione o módulo para acessar</p>
           </div>
