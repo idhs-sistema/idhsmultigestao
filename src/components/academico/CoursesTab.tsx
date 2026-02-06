@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, BookOpen } from 'lucide-react';
+import { Plus, BookOpen, List, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -10,6 +10,13 @@ interface Course {
   workload: number;
   modality: 'EAD' | 'VIDEOCONFERENCIA';
   created_at: string;
+  modules?: CourseModule[];
+}
+
+interface CourseModule {
+  id?: string;
+  name: string;
+  order_number: number;
 }
 
 export function CoursesTab() {
@@ -25,6 +32,9 @@ export function CoursesTab() {
     modality: 'VIDEOCONFERENCIA' as 'EAD' | 'VIDEOCONFERENCIA',
   });
 
+  const [modules, setModules] = useState<CourseModule[]>([]);
+  const [newModuleName, setNewModuleName] = useState('');
+
   useEffect(() => {
     loadCourses();
   }, []);
@@ -32,23 +42,37 @@ export function CoursesTab() {
   const loadCourses = async () => {
     if (!user) return;
 
-    const { data, error } = await supabase
+    const { data: coursesData, error: coursesError } = await supabase
       .from('courses')
       .select('*')
       .eq('user_id', user.id)
       .order('name');
 
-    if (error) {
-      console.error('Error loading courses:', error);
+    if (coursesError) {
+      console.error('Error loading courses:', coursesError);
       return;
     }
 
-    setCourses(data || []);
+    const coursesWithModules = await Promise.all(
+      (coursesData || []).map(async (course) => {
+        const { data: modulesData } = await supabase
+          .from('course_modules')
+          .select('*')
+          .eq('course_id', course.id)
+          .order('order_number');
+
+        return { ...course, modules: modulesData || [] };
+      })
+    );
+
+    setCourses(coursesWithModules);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    let courseId: string;
 
     if (editingCourse) {
       const { error } = await supabase
@@ -66,8 +90,11 @@ export function CoursesTab() {
         alert('Erro ao atualizar curso');
         return;
       }
+      courseId = editingCourse.id;
+
+      await supabase.from('course_modules').delete().eq('course_id', courseId);
     } else {
-      const { error } = await supabase.from('courses').insert([
+      const { data, error } = await supabase.from('courses').insert([
         {
           user_id: user.id,
           name: formData.name,
@@ -75,11 +102,30 @@ export function CoursesTab() {
           workload: parseInt(formData.workload),
           modality: formData.modality,
         },
-      ]);
+      ]).select();
 
-      if (error) {
+      if (error || !data) {
         console.error('Error adding course:', error);
         alert('Erro ao adicionar curso');
+        return;
+      }
+      courseId = data[0].id;
+    }
+
+    if (modules.length > 0) {
+      const modulesToInsert = modules.map((module, index) => ({
+        course_id: courseId,
+        name: module.name,
+        order_number: index + 1,
+      }));
+
+      const { error: modulesError } = await supabase
+        .from('course_modules')
+        .insert(modulesToInsert);
+
+      if (modulesError) {
+        console.error('Error saving modules:', modulesError);
+        alert('Erro ao salvar módulos');
         return;
       }
     }
@@ -97,6 +143,8 @@ export function CoursesTab() {
       workload: '',
       modality: 'VIDEOCONFERENCIA',
     });
+    setModules([]);
+    setNewModuleName('');
   };
 
   const handleEdit = (course: Course) => {
@@ -107,7 +155,18 @@ export function CoursesTab() {
       workload: course.workload.toString(),
       modality: course.modality,
     });
+    setModules(course.modules || []);
     setShowModal(true);
+  };
+
+  const handleAddModule = () => {
+    if (!newModuleName.trim()) return;
+    setModules([...modules, { name: newModuleName, order_number: modules.length + 1 }]);
+    setNewModuleName('');
+  };
+
+  const handleRemoveModule = (index: number) => {
+    setModules(modules.filter((_, i) => i !== index));
   };
 
   return (
@@ -138,6 +197,12 @@ export function CoursesTab() {
                 <div className="space-y-1 text-sm text-slate-600">
                   <p>Professor: {course.teacher_name}</p>
                   <p>Carga Horária: {course.workload}h</p>
+                  {course.modules && course.modules.length > 0 && (
+                    <p className="flex items-center space-x-1">
+                      <List className="w-4 h-4" />
+                      <span>{course.modules.length} {course.modules.length === 1 ? 'módulo' : 'módulos'}</span>
+                    </p>
+                  )}
                   <span
                     className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
                       course.modality === 'EAD'
@@ -168,7 +233,7 @@ export function CoursesTab() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold text-slate-800 mb-4">
               {editingCourse ? 'Editar Curso' : 'Novo Curso'}
             </h3>
@@ -233,6 +298,60 @@ export function CoursesTab() {
                     EAD 24h
                   </button>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Módulos</label>
+                <div className="flex space-x-2 mb-3">
+                  <input
+                    type="text"
+                    value={newModuleName}
+                    onChange={(e) => setNewModuleName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddModule();
+                      }
+                    }}
+                    placeholder="Nome do módulo"
+                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddModule}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {modules.length > 0 && (
+                  <div className="border border-slate-200 rounded-lg p-3 space-y-2 max-h-48 overflow-y-auto">
+                    {modules.map((module, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <span className="flex items-center justify-center w-6 h-6 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                            {index + 1}
+                          </span>
+                          <span className="text-sm text-slate-700">{module.name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveModule(index)}
+                          className="text-red-600 hover:text-red-800 p-1"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {modules.length === 0 && (
+                  <p className="text-sm text-slate-500 italic">Nenhum módulo adicionado</p>
+                )}
               </div>
 
               <div className="flex space-x-3 pt-4">
