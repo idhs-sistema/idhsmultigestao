@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react';
-import { X, Download, Edit2, Save } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { X, Download, Edit2, Save, Upload, Trash2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import logoImg from '../../assets/image.png';
+import { supabase } from '../../lib/supabase';
 
 interface CertificateModalProps {
   studentName: string;
@@ -33,9 +34,146 @@ export function CertificateModal({
     endDate,
     modules: [...courseModules],
   });
+  const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
+  const [signaturePosition, setSignaturePosition] = useState({ x: 50, y: 70 });
+  const [isDraggingSignature, setIsDraggingSignature] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isUploadingSignature, setIsUploadingSignature] = useState(false);
+  const [availableSignatures, setAvailableSignatures] = useState<any[]>([]);
+  const [showSignatureMenu, setShowSignatureMenu] = useState(false);
 
   const frontRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadAvailableSignatures();
+  }, []);
+
+  const loadAvailableSignatures = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('signatures')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setAvailableSignatures(data);
+    }
+  };
+
+  const handleSignatureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecione um arquivo de imagem (PNG, JPG, etc.)');
+      return;
+    }
+
+    setIsUploadingSignature(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert('Você precisa estar autenticado para fazer upload de assinatura');
+        return;
+      }
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('signatures')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('signatures')
+        .getPublicUrl(fileName);
+
+      const { error: dbError } = await supabase
+        .from('signatures')
+        .insert({
+          user_id: user.id,
+          image_url: publicUrl,
+          name: 'Assinatura'
+        });
+
+      if (dbError) throw dbError;
+
+      setSignatureUrl(publicUrl);
+      await loadAvailableSignatures();
+      setShowSignatureMenu(false);
+      alert('Assinatura carregada com sucesso!');
+    } catch (error: any) {
+      console.error('Erro ao fazer upload:', error);
+      alert('Erro ao fazer upload da assinatura: ' + error.message);
+    } finally {
+      setIsUploadingSignature(false);
+    }
+  };
+
+  const handleDeleteSignature = async (signatureId: string, imageUrl: string) => {
+    if (!confirm('Deseja realmente excluir esta assinatura?')) return;
+
+    try {
+      const filePath = imageUrl.split('/signatures/')[1];
+
+      await supabase.storage
+        .from('signatures')
+        .remove([filePath]);
+
+      await supabase
+        .from('signatures')
+        .delete()
+        .eq('id', signatureId);
+
+      if (signatureUrl === imageUrl) {
+        setSignatureUrl(null);
+      }
+
+      await loadAvailableSignatures();
+    } catch (error: any) {
+      console.error('Erro ao excluir assinatura:', error);
+      alert('Erro ao excluir assinatura');
+    }
+  };
+
+  const handleSignatureMouseDown = (e: React.MouseEvent) => {
+    if (!signatureUrl || !frontRef.current) return;
+
+    setIsDraggingSignature(true);
+    const rect = frontRef.current.getBoundingClientRect();
+    const signatureElement = e.currentTarget as HTMLElement;
+    const signatureRect = signatureElement.getBoundingClientRect();
+
+    setDragOffset({
+      x: e.clientX - signatureRect.left,
+      y: e.clientY - signatureRect.top
+    });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingSignature || !frontRef.current) return;
+
+    const rect = frontRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left - dragOffset.x) / rect.width) * 100;
+    const y = ((e.clientY - rect.top - dragOffset.y) / rect.height) * 100;
+
+    setSignaturePosition({
+      x: Math.max(0, Math.min(85, x)),
+      y: Math.max(0, Math.min(85, y))
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDraggingSignature(false);
+  };
 
   const handleGeneratePDF = async () => {
     const pdf = new jsPDF({
@@ -96,6 +234,82 @@ export function CertificateModal({
             <p className="text-slate-600 mt-1">{editableData.studentName}</p>
           </div>
           <div className="flex items-center space-x-3">
+            <div className="relative">
+              <button
+                onClick={() => setShowSignatureMenu(!showSignatureMenu)}
+                className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                <Upload className="w-5 h-5" />
+                <span>Assinatura</span>
+              </button>
+
+              {showSignatureMenu && (
+                <div className="absolute top-full mt-2 right-0 bg-white rounded-lg shadow-xl border border-slate-200 p-4 w-80 z-50">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-semibold text-slate-800">Gerenciar Assinaturas</h4>
+                    <button onClick={() => setShowSignatureMenu(false)} className="text-slate-400 hover:text-slate-600">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingSignature}
+                    className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300 mb-3"
+                  >
+                    <Upload className="w-5 h-5" />
+                    <span>{isUploadingSignature ? 'Enviando...' : 'Upload Nova Assinatura'}</span>
+                  </button>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleSignatureUpload}
+                    className="hidden"
+                  />
+
+                  {availableSignatures.length > 0 && (
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      <p className="text-sm text-slate-600 mb-2">Assinaturas salvas:</p>
+                      {availableSignatures.map((sig) => (
+                        <div key={sig.id} className="flex items-center space-x-2 p-2 border border-slate-200 rounded hover:bg-slate-50">
+                          <img src={sig.image_url} alt="Assinatura" className="h-12 w-auto object-contain" />
+                          <div className="flex-1">
+                            <p className="text-sm text-slate-700">{sig.name}</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setSignatureUrl(sig.image_url);
+                              setShowSignatureMenu(false);
+                            }}
+                            className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                          >
+                            Usar
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSignature(sig.id, sig.image_url)}
+                            className="p-1 text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {signatureUrl && (
+                    <button
+                      onClick={() => setSignatureUrl(null)}
+                      className="w-full mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      Remover Assinatura do Certificado
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setIsEditing(!isEditing)}
               className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
@@ -170,7 +384,11 @@ export function CertificateModal({
               className="bg-white border-2 border-slate-300 aspect-[297/210] w-full relative overflow-hidden"
               style={{
                 backgroundImage: 'linear-gradient(to bottom right, #f8fafc 0%, #ffffff 100%)',
+                cursor: isDraggingSignature ? 'grabbing' : 'default'
               }}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
             >
               <div className="absolute top-0 left-0 w-32 h-32 border-l-[40px] border-t-[40px] border-l-[#60a5fa] border-t-[#60a5fa] opacity-80"></div>
               <div className="absolute top-8 left-8 w-24 h-24 border-l-[30px] border-t-[30px] border-l-[#1e40af] border-t-[#1e40af] opacity-60"></div>
@@ -283,6 +501,30 @@ export function CertificateModal({
                   <div className="w-32"></div>
                 </div>
               </div>
+
+              {signatureUrl && (
+                <div
+                  className="absolute z-20"
+                  style={{
+                    left: `${signaturePosition.x}%`,
+                    top: `${signaturePosition.y}%`,
+                    cursor: isDraggingSignature ? 'grabbing' : 'grab'
+                  }}
+                  onMouseDown={handleSignatureMouseDown}
+                >
+                  <img
+                    src={signatureUrl}
+                    alt="Assinatura"
+                    className="h-16 w-auto object-contain pointer-events-none select-none"
+                    draggable={false}
+                  />
+                  {!isDraggingSignature && (
+                    <div className="text-xs text-center text-slate-500 mt-1 bg-white bg-opacity-80 px-2 py-1 rounded">
+                      Arraste para posicionar
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div
