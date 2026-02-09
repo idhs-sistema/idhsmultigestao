@@ -3,6 +3,7 @@ import { Plus, GraduationCap, Users, Calendar, CheckSquare, Award, User, Search,
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { CertificateModal } from './CertificateModal';
+import { CertificateModalEAD } from './CertificateModalEAD';
 
 interface Course {
   id: string;
