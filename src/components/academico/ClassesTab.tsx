@@ -427,10 +427,10 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
   const [tab, setTab] = useState<'students' | 'attendance' | 'close'>('students');
   const [students, setStudents] = useState<any[]>([]);
   const [availableStudents, setAvailableStudents] = useState<Student[]>([]);
-  const [selectedStudent, setSelectedStudent] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showCertificate, setShowCertificate] = useState(false);
   const [certificateData, setCertificateData] = useState<any>(null);
+  const [showEnrollmentModal, setShowEnrollmentModal] = useState<'regular' | 'excepcional' | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -459,12 +459,20 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
             .eq('student_id', cs.student_id)
             .eq('present', true);
 
-          const percentage = ((presentCount || 0) / classData.total_classes) * 100;
+          const firstClassNumber = cs.first_class_number || 1;
+          const totalClassesForStudent = cs.enrollment_type === 'excepcional'
+            ? classData.total_classes - firstClassNumber + 1
+            : classData.total_classes;
+
+          const percentage = totalClassesForStudent > 0
+            ? ((presentCount || 0) / totalClassesForStudent) * 100
+            : 0;
 
           return {
             ...cs,
             attendanceCount: presentCount || 0,
             attendancePercentage: percentage,
+            totalClassesForStudent,
           };
         })
       );
@@ -518,32 +526,34 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
     setAvailableStudents(available);
   };
 
-  const handleEnrollStudent = async () => {
-    if (!selectedStudent) return;
+  const handleEnrollStudents = async (studentIds: string[], enrollmentType: 'regular' | 'excepcional', firstClassNumber: number = 1) => {
+    if (studentIds.length === 0) return;
 
-    const { error } = await supabase.from('class_students').insert([
-      {
-        class_id: classData.id,
-        student_id: selectedStudent,
-      },
-    ]);
+    const enrollmentData = studentIds.map(studentId => ({
+      class_id: classData.id,
+      student_id: studentId,
+      enrollment_type: enrollmentType,
+      enrollment_start_date: new Date().toISOString().split('T')[0],
+      first_class_number: enrollmentType === 'excepcional' ? firstClassNumber : 1,
+    }));
+
+    const { error } = await supabase.from('class_students').insert(enrollmentData);
 
     if (error) {
-      console.error('Error enrolling student:', error);
-      alert('Erro ao matricular aluno');
+      console.error('Error enrolling students:', error);
+      alert('Erro ao matricular alunos');
       return;
     }
 
     if (classData.modality === 'EAD') {
-      await supabase.from('ead_access').insert([
-        {
-          class_id: classData.id,
-          student_id: selectedStudent,
-        },
-      ]);
+      const eadAccessData = studentIds.map(studentId => ({
+        class_id: classData.id,
+        student_id: studentId,
+      }));
+
+      await supabase.from('ead_access').insert(eadAccessData);
     }
 
-    setSelectedStudent('');
     loadClassStudents();
     loadAvailableStudents();
   };
@@ -772,24 +782,17 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
           {tab === 'students' && (
             <div className="space-y-6">
               <div className="flex gap-4">
-                <select
-                  value={selectedStudent}
-                  onChange={(e) => setSelectedStudent(e.target.value)}
-                  className="flex-1 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-base"
-                >
-                  <option value="">Selecione um aluno para matricular</option>
-                  {availableStudents.map((student) => (
-                    <option key={student.id} value={student.id}>
-                      {student.full_name}
-                    </option>
-                  ))}
-                </select>
                 <button
-                  onClick={handleEnrollStudent}
-                  disabled={!selectedStudent}
-                  className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  onClick={() => setShowEnrollmentModal('regular')}
+                  className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
                 >
-                  Matricular Aluno
+                  Matrícula Regular
+                </button>
+                <button
+                  onClick={() => setShowEnrollmentModal('excepcional')}
+                  className="flex-1 px-6 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors font-medium"
+                >
+                  Matrícula Excepcional
                 </button>
               </div>
 
@@ -816,7 +819,7 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                           CPF
                         </th>
                         <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
-                          Status
+                          Tipo de Matrícula
                         </th>
                         <th className="px-6 py-4 text-left text-sm font-semibold text-slate-700 uppercase tracking-wider">
                           Ações
@@ -842,9 +845,20 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                             {student.students.cpf || '-'}
                           </td>
                           <td className="px-6 py-4">
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                              Matriculado
-                            </span>
+                            <div className="flex flex-col">
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium w-fit ${
+                                student.enrollment_type === 'excepcional'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {student.enrollment_type === 'excepcional' ? 'Excepcional' : 'Regular'}
+                              </span>
+                              {student.enrollment_type === 'excepcional' && classData.modality === 'VIDEOCONFERENCIA' && (
+                                <span className="text-xs text-slate-500 mt-1">
+                                  A partir da aula {student.first_class_number}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-sm">
                             <button
@@ -1000,10 +1014,12 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
                               {classData.modality === 'VIDEOCONFERENCIA' ? (
                                 <div className="flex flex-col">
                                   <span className="font-medium">
-                                    {student.attendanceCount} de {classData.total_classes} aulas
+                                    {student.attendanceCount} de {student.totalClassesForStudent || classData.total_classes} aulas
                                   </span>
                                   <span className="text-xs text-slate-500">
-                                    Presenças registradas
+                                    {student.enrollment_type === 'excepcional'
+                                      ? `Matrícula excepcional - A partir da aula ${student.first_class_number}`
+                                      : 'Matrícula regular'}
                                   </span>
                                 </div>
                               ) : (
@@ -1078,6 +1094,184 @@ function ClassManagementModal({ classData, onClose }: ClassManagementModalProps)
           onClose={handleCloseCertificate}
         />
       )}
+
+      {showEnrollmentModal && (
+        <EnrollmentModal
+          classData={classData}
+          availableStudents={availableStudents}
+          enrollmentType={showEnrollmentModal}
+          onEnroll={handleEnrollStudents}
+          onClose={() => setShowEnrollmentModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface EnrollmentModalProps {
+  classData: Class;
+  availableStudents: Student[];
+  enrollmentType: 'regular' | 'excepcional';
+  onEnroll: (studentIds: string[], enrollmentType: 'regular' | 'excepcional', firstClassNumber?: number) => Promise<void>;
+  onClose: () => void;
+}
+
+function EnrollmentModal({ classData, availableStudents, enrollmentType, onEnroll, onClose }: EnrollmentModalProps) {
+  const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState('');
+  const [firstClassNumber, setFirstClassNumber] = useState(1);
+
+  const filteredStudents = availableStudents.filter((student) => {
+    if (!searchTerm) return true;
+    const search = searchTerm.toLowerCase();
+    return student.full_name.toLowerCase().includes(search);
+  });
+
+  const handleToggleStudent = (studentId: string) => {
+    const newSelected = new Set(selectedStudents);
+    if (newSelected.has(studentId)) {
+      newSelected.delete(studentId);
+    } else {
+      newSelected.add(studentId);
+    }
+    setSelectedStudents(newSelected);
+  };
+
+  const handleToggleAll = () => {
+    if (selectedStudents.size === filteredStudents.length) {
+      setSelectedStudents(new Set());
+    } else {
+      setSelectedStudents(new Set(filteredStudents.map(s => s.id)));
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (selectedStudents.size === 0) {
+      alert('Selecione pelo menos um aluno');
+      return;
+    }
+
+    if (enrollmentType === 'excepcional' && classData.modality === 'VIDEOCONFERENCIA' && (firstClassNumber < 1 || firstClassNumber > classData.total_classes)) {
+      alert(`Número da primeira aula deve estar entre 1 e ${classData.total_classes}`);
+      return;
+    }
+
+    await onEnroll(Array.from(selectedStudents), enrollmentType, firstClassNumber);
+    onClose();
+    alert(`${selectedStudents.size} aluno(s) matriculado(s) com sucesso!`);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[85vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <h3 className="text-2xl font-bold text-slate-800">
+                {enrollmentType === 'regular' ? 'Matrícula Regular' : 'Matrícula Excepcional'}
+              </h3>
+              <p className="text-slate-600 mt-1">
+                {enrollmentType === 'regular'
+                  ? 'Alunos matriculados seguirão o fluxo normal de frequência'
+                  : 'Frequência será contabilizada a partir da data de matrícula'}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-600 text-3xl p-1"
+            >
+              ×
+            </button>
+          </div>
+
+          {enrollmentType === 'excepcional' && classData.modality === 'VIDEOCONFERENCIA' && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <label className="block text-sm font-medium text-amber-800 mb-2">
+                A partir de qual aula o(s) aluno(s) começará(ão)?
+              </label>
+              <input
+                type="number"
+                min="1"
+                max={classData.total_classes}
+                value={firstClassNumber}
+                onChange={(e) => setFirstClassNumber(parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              />
+              <p className="text-sm text-amber-700 mt-2">
+                Total de aulas no ciclo: {classData.total_classes}.
+                {firstClassNumber > 1 && ` O aluno terá ${classData.total_classes - firstClassNumber + 1} aulas contabilizadas.`}
+              </p>
+            </div>
+          )}
+
+          <div className="mb-4">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar aluno por nome..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <button
+              onClick={handleToggleAll}
+              className="text-sm text-green-600 hover:text-green-700 font-medium"
+            >
+              {selectedStudents.size === filteredStudents.length ? 'Desmarcar todos' : 'Selecionar todos'}
+            </button>
+            <span className="text-sm text-slate-600 ml-3">
+              {selectedStudents.size} aluno(s) selecionado(s)
+            </span>
+          </div>
+
+          <div className="border border-slate-200 rounded-lg max-h-96 overflow-y-auto">
+            {filteredStudents.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                <User className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p>Nenhum aluno disponível para matrícula</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-200">
+                {filteredStudents.map((student) => (
+                  <label
+                    key={student.id}
+                    className="flex items-center p-4 hover:bg-slate-50 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedStudents.has(student.id)}
+                      onChange={() => handleToggleStudent(student.id)}
+                      className="w-5 h-5 text-green-600 rounded focus:ring-green-500 mr-3"
+                    />
+                    <span className="text-slate-800 font-medium">{student.full_name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={onClose}
+              className="flex-1 px-6 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={selectedStudents.size === 0}
+              className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            >
+              Matricular {selectedStudents.size > 0 && `(${selectedStudents.size})`}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1318,8 +1512,15 @@ function AttendanceDetailsModal({ classData, student, onClose }: AttendanceDetai
     alert('Frequência excluída com sucesso!');
   };
 
+  const firstClassNumber = student.first_class_number || 1;
+  const totalClassesForStudent = student.enrollment_type === 'excepcional'
+    ? classData.total_classes - firstClassNumber + 1
+    : classData.total_classes;
+
   const presentCount = attendanceRecords.filter(r => r.present).length;
-  const percentage = (presentCount / classData.total_classes) * 100;
+  const percentage = totalClassesForStudent > 0
+    ? (presentCount / totalClassesForStudent) * 100
+    : 0;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
@@ -1329,13 +1530,25 @@ function AttendanceDetailsModal({ classData, student, onClose }: AttendanceDetai
             <div>
               <h3 className="text-2xl font-bold text-slate-800">Detalhes de Frequência</h3>
               <p className="text-lg text-slate-600 mt-1">{student.students.full_name}</p>
-              <div className="flex items-center space-x-4 mt-3">
-                <span className="text-sm text-slate-600">
-                  Presenças: <span className="font-bold text-green-600">{presentCount}</span> / {classData.total_classes}
-                </span>
-                <span className={`text-sm font-bold ${percentage >= 60 ? 'text-green-600' : 'text-red-600'}`}>
-                  {percentage.toFixed(1)}%
-                </span>
+              <div className="flex flex-col mt-3 space-y-2">
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm text-slate-600">
+                    Presenças: <span className="font-bold text-green-600">{presentCount}</span> / {totalClassesForStudent}
+                  </span>
+                  <span className={`text-sm font-bold ${percentage >= 60 ? 'text-green-600' : 'text-red-600'}`}>
+                    {percentage.toFixed(1)}%
+                  </span>
+                </div>
+                {student.enrollment_type === 'excepcional' && (
+                  <div className="flex items-center space-x-2">
+                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                      Matrícula Excepcional
+                    </span>
+                    <span className="text-xs text-slate-600">
+                      A partir da aula {firstClassNumber}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
             <button
