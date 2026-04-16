@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Plus, AlertCircle, CheckCircle, Clock, Copy } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -25,6 +25,7 @@ export function ControlePagamentoTab() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [isReplicating, setIsReplicating] = useState(false);
   const { user } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -62,6 +63,32 @@ export function ControlePagamentoTab() {
     }
 
     setInvoices(data || []);
+  };
+
+  const handleReplicateMonth = async () => {
+    if (!user) return;
+
+    const confirmed = window.confirm(
+      'Todas as notas fiscais do mês atual serão copiadas para o mês seguinte. Deseja continuar?'
+    );
+    if (!confirmed) return;
+
+    setIsReplicating(true);
+    try {
+      const { data, error } = await supabase.rpc('replicate_invoices_to_next_month', {
+        p_user_id: user.id,
+      });
+
+      if (error) throw error;
+
+      alert(`✅ ${data} nota(s) fiscal(is) replicada(s) com sucesso!`);
+      await loadInvoices();
+    } catch (error: any) {
+      console.error('Erro ao replicar:', error);
+      alert(`❌ Erro ao replicar: ${error.message}`);
+    } finally {
+      setIsReplicating(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -204,13 +231,23 @@ export function ControlePagamentoTab() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold text-slate-800">Controle de Notas Fiscais</h2>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          <span>Nova Nota Fiscal</span>
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={handleReplicateMonth}
+            disabled={isReplicating}
+            className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Copy className="w-5 h-5" />
+            <span>{isReplicating ? 'Replicando...' : 'Replicar para próximo mês'}</span>
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Nova Nota Fiscal</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
